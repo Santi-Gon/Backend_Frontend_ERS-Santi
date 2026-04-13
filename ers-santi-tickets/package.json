@@ -1,0 +1,25 @@
+{
+  "name": "ers-santi-tickets",
+  "version": "1.0.0",
+  "description": "Microservicio de Tickets — ERS-Santi (Fastify + TypeScript)",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.1",
+    "@supabase/supabase-js": "^2.49.4",
+    "dotenv": "^16.5.0",
+    "fastify": "^5.3.2",
+    "fastify-plugin": "^5.0.1",
+    "jose": "^5.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

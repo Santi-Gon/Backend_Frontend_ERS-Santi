@@ -17,26 +17,31 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 --  LIMPIAR (útil para re-ejecutar en desarrollo)
 -- ============================================================
 DROP TABLE IF EXISTS grupo_usuario_permisos CASCADE;
-DROP TABLE IF EXISTS grupo_usuarios           CASCADE;
-DROP TABLE IF EXISTS usuario_permisos         CASCADE;
-DROP TABLE IF EXISTS grupos                   CASCADE;
-DROP TABLE IF EXISTS permisos                 CASCADE;
-DROP TABLE IF EXISTS usuarios                 CASCADE;
+
+DROP TABLE IF EXISTS grupo_usuarios CASCADE;
+
+DROP TABLE IF EXISTS usuario_permisos CASCADE;
+
+DROP TABLE IF EXISTS grupos CASCADE;
+
+DROP TABLE IF EXISTS permisos CASCADE;
+
+DROP TABLE IF EXISTS usuarios CASCADE;
 
 -- ============================================================
 --  1. USUARIOS
 --     Perfil extendido. En producción: id → auth.users(id)
 -- ============================================================
 CREATE TABLE usuarios (
-    id               UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    nombre_completo  TEXT        NOT NULL,
-    usuario          TEXT        NOT NULL UNIQUE,
-    email            TEXT        NOT NULL UNIQUE,
-    contrasenia      TEXT        NOT NULL,   -- hash bcrypt en producción
-    telefono         TEXT,                   -- TEXT, no INT (acepta +52, 0xx...)
-    direccion        TEXT,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    nombre_completo TEXT NOT NULL,
+    usuario TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    contrasenia TEXT NOT NULL, -- hash bcrypt en producción
+    telefono TEXT, -- TEXT, no INT (acepta +52, 0xx...)
+    direccion TEXT,
     fecha_nacimiento DATE,
-    fecha_creacion   TIMESTAMPTZ NOT NULL DEFAULT now()
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ============================================================
@@ -44,30 +49,30 @@ CREATE TABLE usuarios (
 --     Catálogo de permisos del sistema.
 -- ============================================================
 CREATE TABLE permisos (
-    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    nombre      TEXT        NOT NULL UNIQUE,   -- 'ticket_add', 'groups_edit', …
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    nombre TEXT NOT NULL UNIQUE, -- 'ticket_add', 'groups_edit', …
     descripcion TEXT,
-    creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ============================================================
 --  3. GRUPOS
 -- ============================================================
 CREATE TABLE grupos (
-    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    nombre      TEXT        NOT NULL,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    nombre TEXT NOT NULL,
     descripcion TEXT,
-    creador_id  UUID        REFERENCES usuarios(id) ON DELETE SET NULL,
-    lider_id    UUID        REFERENCES usuarios(id) ON DELETE SET NULL,
-    creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+    creador_id UUID REFERENCES usuarios (id) ON DELETE SET NULL,
+    lider_id UUID REFERENCES usuarios (id) ON DELETE SET NULL,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ============================================================
 --  4. GRUPO_USUARIOS  — membresía (¿quién está en el grupo?)
 -- ============================================================
 CREATE TABLE grupo_usuarios (
-    grupo_id     UUID        NOT NULL REFERENCES grupos(id)   ON DELETE CASCADE,
-    usuario_id   UUID        NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    grupo_id UUID NOT NULL REFERENCES grupos (id) ON DELETE CASCADE,
+    usuario_id UUID NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
     fecha_ingreso TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (grupo_id, usuario_id)
 );
@@ -76,8 +81,8 @@ CREATE TABLE grupo_usuarios (
 --  5. USUARIO_PERMISOS  — permisos globales del sistema
 -- ============================================================
 CREATE TABLE usuario_permisos (
-    usuario_id  UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    permiso_id  UUID NOT NULL REFERENCES permisos(id) ON DELETE CASCADE,
+    usuario_id UUID NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+    permiso_id UUID NOT NULL REFERENCES permisos (id) ON DELETE CASCADE,
     PRIMARY KEY (usuario_id, permiso_id)
 );
 
@@ -88,22 +93,27 @@ CREATE TABLE usuario_permisos (
 --     FK compuesta → garantiza que el usuario sea miembro.
 -- ============================================================
 CREATE TABLE grupo_usuario_permisos (
-    grupo_id    UUID NOT NULL,
-    usuario_id  UUID NOT NULL,
-    permiso_id  UUID NOT NULL REFERENCES permisos(id) ON DELETE CASCADE,
-    PRIMARY KEY (grupo_id, usuario_id, permiso_id),
-    FOREIGN KEY (grupo_id, usuario_id)
-        REFERENCES grupo_usuarios(grupo_id, usuario_id) ON DELETE CASCADE
+    grupo_id UUID NOT NULL,
+    usuario_id UUID NOT NULL,
+    permiso_id UUID NOT NULL REFERENCES permisos (id) ON DELETE CASCADE,
+    PRIMARY KEY (
+        grupo_id,
+        usuario_id,
+        permiso_id
+    ),
+    FOREIGN KEY (grupo_id, usuario_id) REFERENCES grupo_usuarios (grupo_id, usuario_id) ON DELETE CASCADE
 );
 
 -- ============================================================
 --  ÍNDICES de apoyo
 -- ============================================================
-CREATE INDEX idx_gu_usuario   ON grupo_usuarios(usuario_id);
-CREATE INDEX idx_gup_usuario  ON grupo_usuario_permisos(usuario_id);
-CREATE INDEX idx_gup_grupo    ON grupo_usuario_permisos(grupo_id);
-CREATE INDEX idx_up_usuario   ON usuario_permisos(usuario_id);
+CREATE INDEX idx_gu_usuario ON grupo_usuarios (usuario_id);
 
+CREATE INDEX idx_gup_usuario ON grupo_usuario_permisos (usuario_id);
+
+CREATE INDEX idx_gup_grupo ON grupo_usuario_permisos (grupo_id);
+
+CREATE INDEX idx_up_usuario ON usuario_permisos (usuario_id);
 
 -- ============================================================
 --  DATOS DE PRUEBA
@@ -421,3 +431,53 @@ SELECT EXISTS (
       AND gup.grupo_id   = 'c0000000-0000-0000-0000-000000000001'
       AND p.nombre       = 'ticket_add'
 ) AS tiene_permiso;
+
+
+
+-- ESTADOS de ticket
+CREATE TABLE estados (
+    id        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    nombre    TEXT NOT NULL UNIQUE,  -- 'pendiente', 'en progreso', 'revisión', 'finalizada'
+    color     TEXT NOT NULL,         -- '#6b7280' / '#3b82f6' / '#f59e0b' / '#22c55e'
+    orden     INT  NOT NULL DEFAULT 0
+);
+
+-- PRIORIDADES de ticket
+CREATE TABLE prioridades (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    nombre TEXT NOT NULL UNIQUE, -- 'Alta', 'Media', 'Baja'
+    orden INT NOT NULL -- 1=Alta, 2=Media, 3=Baja
+);
+
+-- TICKETS
+CREATE TABLE tickets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    grupo_id UUID NOT NULL REFERENCES grupos (id) ON DELETE CASCADE,
+    titulo TEXT NOT NULL,
+    descripcion TEXT,
+    autor_id UUID NOT NULL REFERENCES usuarios (id) ON DELETE SET NULL,
+    asignado_id UUID REFERENCES usuarios (id) ON DELETE SET NULL,
+    estado_id UUID NOT NULL REFERENCES estados (id),
+    prioridad_id UUID NOT NULL REFERENCES prioridades (id),
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fecha_final TIMESTAMPTZ
+);
+
+-- HISTORIAL de cambios de estado
+CREATE TABLE historial_tickets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    ticket_id UUID NOT NULL REFERENCES tickets (id) ON DELETE CASCADE,
+    usuario_id UUID REFERENCES usuarios (id) ON DELETE SET NULL,
+    accion TEXT NOT NULL, -- 'estado_cambiado', 'asignado', 'editado', 'creado'
+    detalles JSONB, -- { "de": "pendiente", "a": "en progreso" }
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- COMENTARIOS
+CREATE TABLE comentarios (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    ticket_id UUID NOT NULL REFERENCES tickets (id) ON DELETE CASCADE,
+    autor_id UUID NOT NULL REFERENCES usuarios (id) ON DELETE SET NULL,
+    contenido TEXT NOT NULL,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
