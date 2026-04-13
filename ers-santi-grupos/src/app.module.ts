@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { SupabaseModule } from './supabase/supabase.module';
+import { GruposModule } from './grupos/grupos.module';
 
 @Module({
   imports: [
@@ -10,8 +11,8 @@ import { SupabaseModule } from './supabase/supabase.module';
     // Cliente Supabase disponible en todos los módulos (@Global)
     SupabaseModule,
 
-    // Los módulos de negocio se irán agregando aquí:
-    // GruposModule,
+    // Microservicio de Grupos
+    GruposModule,
   ],
   controllers: [],
   providers: [],
