@@ -1,0 +1,19 @@
+# compiled output
+/dist
+/node_modules
+
+# env files
+.env
+.env.*
+!.env.example
+
+# logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# test coverage
+/coverage
