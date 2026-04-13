@@ -16,24 +16,7 @@ import { UpdatePermissionsDto } from './dto/update-permissions.dto';
 export class UsersService {
   constructor(private supabaseService: SupabaseService) {}
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // HELPER: Derivar rol a partir de la lista de permisos
-  // Lógica acordada:
-  //   Admin  → tiene 'users_delete' (el permiso más privilegiado del sistema)
-  //   Editor → tiene algún permiso de _add, _edit o _delete (pero no users_delete)
-  //   Viewer → solo tiene permisos de _view o ninguno
-  // ─────────────────────────────────────────────────────────────────────────────
-  private deriveRol(permissions: string[]): 'Admin' | 'Editor' | 'Viewer' {
-    if (permissions.includes('users_delete')) return 'Admin';
-    if (
-      permissions.some(
-        (p) =>
-          p.endsWith('_add') || p.endsWith('_edit') || p.endsWith('_delete'),
-      )
-    )
-      return 'Editor';
-    return 'Viewer';
-  }
+
 
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /users/add  (admin crea un usuario)
@@ -156,7 +139,6 @@ export class UsersService {
     return {
       ...perfil,
       permisos: permissions,
-      rol: this.deriveRol(permissions),
     };
   }
 
@@ -341,11 +323,10 @@ export class UsersService {
       if (pname) permsMap[uid].push(pname);
     }
 
-    // Combinar usuarios con sus permisos y rol derivado
+    // Combinar usuarios con sus permisos
     return (users ?? []).map((u) => ({
       ...u,
       permisos: permsMap[u.id] ?? [],
-      rol: this.deriveRol(permsMap[u.id] ?? []),
     }));
   }
 
@@ -510,7 +491,6 @@ export class UsersService {
       return {
         message: `Todos los permisos de "${existing.nombre_completo}" han sido removidos.`,
         permisos_asignados: [],
-        rol: 'Viewer',
       };
     }
 
@@ -549,7 +529,6 @@ export class UsersService {
     return {
       message: `Permisos de "${existing.nombre_completo}" actualizados correctamente.`,
       permisos_asignados: assigned,
-      rol: this.deriveRol(assigned),
     };
   }
 }

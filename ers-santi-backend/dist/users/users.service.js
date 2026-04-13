@@ -17,13 +17,6 @@ let UsersService = class UsersService {
     constructor(supabaseService) {
         this.supabaseService = supabaseService;
     }
-    deriveRol(permissions) {
-        if (permissions.includes('users_delete'))
-            return 'Admin';
-        if (permissions.some((p) => p.endsWith('_add') || p.endsWith('_edit') || p.endsWith('_delete')))
-            return 'Editor';
-        return 'Viewer';
-    }
     async addUser(dto) {
         const admin = this.supabaseService.getAdminClient();
         const { data: existing } = await admin
@@ -110,7 +103,6 @@ let UsersService = class UsersService {
         return {
             ...perfil,
             permisos: permissions,
-            rol: this.deriveRol(permissions),
         };
     }
     async updateMe(userId, userEmail, dto) {
@@ -234,7 +226,6 @@ let UsersService = class UsersService {
         return (users ?? []).map((u) => ({
             ...u,
             permisos: permsMap[u.id] ?? [],
-            rol: this.deriveRol(permsMap[u.id] ?? []),
         }));
     }
     async updateUserAdmin(targetId, dto) {
@@ -311,7 +302,7 @@ let UsersService = class UsersService {
         }
         const { error: authError } = await admin.auth.admin.deleteUser(targetId);
         if (authError) {
-            console.error(...oo_tx(`1429979045_468_6_471_7_11`, '[Users] Usuario eliminado de BD pero falló en Auth:', authError.message));
+            console.error(...oo_tx(`1072027941_449_6_452_7_11`, '[Users] Usuario eliminado de BD pero falló en Auth:', authError.message));
         }
         return {
             message: `Usuario "${existing.nombre_completo}" eliminado permanentemente.`,
@@ -338,7 +329,6 @@ let UsersService = class UsersService {
             return {
                 message: `Todos los permisos de "${existing.nombre_completo}" han sido removidos.`,
                 permisos_asignados: [],
-                rol: 'Viewer',
             };
         }
         const { data: permisosData, error: resolveError } = await admin
@@ -364,7 +354,6 @@ let UsersService = class UsersService {
         return {
             message: `Permisos de "${existing.nombre_completo}" actualizados correctamente.`,
             permisos_asignados: assigned,
-            rol: this.deriveRol(assigned),
         };
     }
 };

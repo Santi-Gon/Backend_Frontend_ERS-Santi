@@ -9,7 +9,6 @@ export declare class UsersController {
     constructor(usersService: UsersService);
     getMe(req: any): Promise<{
         permisos: any[];
-        rol: "Admin" | "Editor" | "Viewer";
         id: any;
         nombre_completo: any;
         usuario: any;
@@ -42,7 +41,6 @@ export declare class UsersController {
     }>;
     getAllUsers(): Promise<{
         permisos: string[];
-        rol: "Admin" | "Editor" | "Viewer";
         id: any;
         nombre_completo: any;
         usuario: any;
@@ -78,11 +76,6 @@ export declare class UsersController {
     }>;
     updatePermissions(id: string, dto: UpdatePermissionsDto): Promise<{
         message: string;
-        permisos_asignados: never[];
-        rol: string;
-    } | {
-        message: string;
         permisos_asignados: string[];
-        rol: "Admin" | "Editor" | "Viewer";
     }>;
 }
