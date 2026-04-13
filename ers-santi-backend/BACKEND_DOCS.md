@@ -283,8 +283,460 @@ Solo si pasa ambas capas el request llega al `usersService.addUser(dto)`.
 
 ---
 
-## 🧪 Prueba de los 3 endpoints
+## 🧪 Guía de pruebas — Los 11 endpoints
+
+> **Base URL:** `http://localhost:3000/api/v1`
+> **Herramienta recomendada:** Thunder Client (extensión VS Code) o Hoppscotch (web)
+>
+> **Flujo general:** Siempre haz login primero → copia el `access_token` → úsalo en el header `Authorization: Bearer <token>` de los demás endpoints.
+
 ---
+
+## PASO 0 — Preparación
+
+Antes de empezar, asegúrate de tener:
+1. El servidor corriendo: `npm run start:dev`
+2. La cuenta admin creada (la que hiciste manualmente con todos los permisos)
+
+---
+
+## ─── BLOQUE 1: AUTH (público, sin token) ─────────────────────────────────
+
+### 1️⃣ POST /auth/register — Registrar un usuario nuevo
+
+```
+Método: POST
+URL:    http://localhost:3000/api/v1/auth/register
+Header: Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "nombre_completo": "Usuario Prueba",
+  "usuario": "uprueba",
+  "email": "uprueba@ers.com",
+  "contrasenia": "TestPass123!",
+  "telefono": "5551112233",
+  "direccion": "Calle Falsa 123",
+  "fecha_nacimiento": "2000-05-20"
+}
+```
+
+**Respuesta esperada (201):**
+```json
+{
+  "statusCode": 201,
+  "intOpCode": 0,
+  "data": [{
+    "message": "Usuario registrado correctamente.",
+    "user": {
+      "id": "uuid-generado",
+      "nombre_completo": "Usuario Prueba",
+      "usuario": "uprueba",
+      "email": "uprueba@ers.com",
+      "fecha_creacion": "..."
+    }
+  }]
+}
+```
+
+**Errores a validar:**
+- Enviar sin el campo `contrasenia` → debe dar error 400
+- Enviar `telefono: "123"` (menos de 10 dígitos) → debe dar error 400
+- Registrar el mismo `usuario` dos veces → debe dar "El nombre de usuario ya está en uso."
+
+---
+
+### 2️⃣ POST /auth/login — Iniciar sesión
+
+```
+Método: POST
+URL:    http://localhost:3000/api/v1/auth/login
+Header: Content-Type: application/json
+```
+
+**Body con username:**
+```json
+{
+  "identifier": "admin",
+  "contrasenia": "AdminPass123!"
+}
+```
+
+**Body con email (también funciona):**
+```json
+{
+  "identifier": "admin@ers.com",
+  "contrasenia": "AdminPass123!"
+}
+```
+
+**Respuesta esperada (200):**
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{
+    "access_token": "eyJhbGci...",
+    "token_type": "Bearer",
+    "user": { "id": "...", "nombre_completo": "Admin Principal", ... },
+    "permissions": ["ticket_view", "users_add", "users_delete", ...]
+  }]
+}
+```
+
+> ⚠️ **COPIA EL `access_token`** — lo necesitas para todos los siguientes endpoints.
+
+---
+
+## ─── BLOQUE 2: PERFIL PROPIO (requiere JWT) ──────────────────────────────
+
+> Para todos estos endpoints agrega el header:
+> `Authorization: Bearer <access_token_del_login>`
+
+### 3️⃣ GET /users/me — Ver mi perfil
+
+```
+Método: GET
+URL:    http://localhost:3000/api/v1/users/me
+Header: Authorization: Bearer <token>
+```
+
+**Sin body.** Respuesta esperada (200):
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{
+    "id": "...",
+    "nombre_completo": "Admin Principal",
+    "usuario": "admin",
+    "email": "admin@ers.com",
+    "telefono": "4420000000",
+    "direccion": null,
+    "fecha_nacimiento": null,
+    "activo": true,
+    "fecha_creacion": "...",
+    "permisos": ["ticket_view", "users_add", ...],
+    "rol": "Admin"
+  }]
+}
+```
+
+---
+
+### 4️⃣ PATCH /users/me — Actualizar mi perfil
+
+```
+Método: PATCH
+URL:    http://localhost:3000/api/v1/users/me
+Header: Authorization: Bearer <token>
+        Content-Type: application/json
+```
+
+**Body (solo los campos que quieres cambiar):**
+```json
+{
+  "nombre_completo": "Admin Principal Editado",
+  "telefono": "5559998877",
+  "direccion": "Av. Principal 500"
+}
+```
+
+**Respuesta esperada (200):**
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{
+    "message": "Perfil actualizado correctamente.",
+    "user": { "nombre_completo": "Admin Principal Editado", ... }
+  }]
+}
+```
+
+**Errores a validar:**
+- Enviar `{}` (sin campos) → debe dar "No se enviaron campos para actualizar."
+- Enviar `telefono: "123"` → debe dar error 400 de validación
+- Intentar cambiar `usuario` a uno que ya existe → "El nombre de usuario ya está en uso."
+
+---
+
+### 5️⃣ PATCH /users/me/password — Cambiar mi contraseña
+
+```
+Método: PATCH
+URL:    http://localhost:3000/api/v1/users/me/password
+Header: Authorization: Bearer <token>
+        Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "contrasenia_actual": "AdminPass123!",
+  "nueva_contrasenia": "NuevoPass456!"
+}
+```
+
+**Respuesta esperada (200):**
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{ "message": "Contraseña actualizada correctamente." }]
+}
+```
+
+**Errores a validar:**
+- Enviar `contrasenia_actual` incorrecta → "La contraseña actual es incorrecta."
+- `nueva_contrasenia` menor a 10 caracteres → error 400 de validación
+- `nueva_contrasenia` sin símbolo especial → error 400 de validación
+
+> ⚠️ Si cambias la contraseña, el token actual sigue válido hasta que expire.
+> En el siguiente login deberás usar la contraseña nueva.
+
+---
+
+### 6️⃣ DELETE /users/me — Dar de baja mi cuenta (soft delete)
+
+> Úsalo con una cuenta de prueba, NO con el admin. Si lo haces con el admin
+> quedará inactivo y tendrás que reactivarlo desde Supabase SQL Editor.
+
+```
+Método: DELETE
+URL:    http://localhost:3000/api/v1/users/me
+Header: Authorization: Bearer <token_de_uprueba>
+```
+
+**Sin body.** Respuesta esperada (200):
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{
+    "message": "Tu cuenta ha sido dada de baja. Contacta al administrador para reactivarla."
+  }]
+}
+```
+
+**Verificación:** Haz GET /users/me con ese mismo token → el usuario sigue existiendo pero `activo: false`. El admin puede reactivarlo con `PATCH /users/:id { "activo": true }`.
+
+---
+
+## ─── BLOQUE 3: ADMINISTRADOR (requiere JWT con permisos) ─────────────────
+
+> Usa el token del **admin** para estos endpoints.
+> El usuario `uprueba` no tendrá acceso y debe devolver 403.
+
+### 7️⃣ GET /users — Listar todos los usuarios
+
+```
+Método: GET
+URL:    http://localhost:3000/api/v1/users
+Header: Authorization: Bearer <token_del_admin>
+```
+
+**Sin body.** Respuesta esperada (200):
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [
+    {
+      "id": "...",
+      "nombre_completo": "Admin Principal",
+      "usuario": "admin",
+      "email": "admin@ers.com",
+      "activo": true,
+      "permisos": ["ticket_view", "users_add", ...],
+      "rol": "Admin"
+    },
+    {
+      "id": "...",
+      "nombre_completo": "Usuario Prueba",
+      "usuario": "uprueba",
+      "activo": false,
+      "permisos": [],
+      "rol": "Viewer"
+    }
+  ]
+}
+```
+
+**Error a validar:**
+- Usar token de `uprueba` (sin `users_view`) → debe dar 403 Forbidden
+
+---
+
+### 8️⃣ POST /users/add — Crear usuario como admin
+
+```
+Método: POST
+URL:    http://localhost:3000/api/v1/users/add
+Header: Authorization: Bearer <token_del_admin>
+        Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "nombre_completo": "María García",
+  "usuario": "mgarcia",
+  "email": "maria.garcia@ers.com",
+  "contrasenia": "MariaPass123!",
+  "telefono": "5554443322",
+  "permisos_iniciales": ["ticket_view", "ticket_add"]
+}
+```
+
+**Respuesta esperada (201):**
+```json
+{
+  "statusCode": 201,
+  "intOpCode": 0,
+  "data": [{
+    "message": "Usuario creado correctamente por el administrador.",
+    "user": { "id": "...", "nombre_completo": "María García", ... },
+    "permisos_asignados": ["ticket_view", "ticket_add"]
+  }]
+}
+```
+
+---
+
+### 9️⃣ PATCH /users/:id — Editar datos de un usuario
+
+> Usa el UUID del usuario `uprueba` o `mgarcia` que creaste antes.
+
+```
+Método: PATCH
+URL:    http://localhost:3000/api/v1/users/<UUID_del_usuario>
+Header: Authorization: Bearer <token_del_admin>
+        Content-Type: application/json
+```
+
+**Body — reactivar a uprueba y cambiarle el nombre:**
+```json
+{
+  "nombre_completo": "Usuario Prueba Actualizado",
+  "activo": true
+}
+```
+
+**Respuesta esperada (200):**
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{
+    "message": "Usuario actualizado correctamente.",
+    "user": { "nombre_completo": "Usuario Prueba Actualizado", "activo": true, ... }
+  }]
+}
+```
+
+**Errores a validar:**
+- UUID que no existe → 404 Not Found
+- Email duplicado → "El email ya está en uso por otro usuario."
+
+---
+
+### 🔟 PUT /users/:id/permissions — Reemplazar permisos de un usuario
+
+```
+Método: PUT
+URL:    http://localhost:3000/api/v1/users/<UUID_de_mgarcia>
+        (o del usuario que quieras modificar)
+Header: Authorization: Bearer <token_del_admin>
+        Content-Type: application/json
+```
+
+**Body — dar permisos completos de editor:**
+```json
+{
+  "permisos": ["ticket_view", "ticket_add", "ticket_edit", "groups_add", "groups_edit"]
+}
+```
+
+**Body — quitar TODOS los permisos:**
+```json
+{
+  "permisos": []
+}
+```
+
+**Respuesta esperada (200):**
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{
+    "message": "Permisos de 'María García' actualizados correctamente.",
+    "permisos_asignados": ["ticket_view", "ticket_add", "ticket_edit", ...],
+    "rol": "Editor"
+  }]
+}
+```
+
+**Verificación del rol derivado:**
+- Solo permisos `_view` → `rol: "Viewer"`
+- Algún `_add`, `_edit` o `_delete` (sin `users_delete`) → `rol: "Editor"`
+- Con `users_delete` → `rol: "Admin"`
+
+---
+
+### 1️⃣1️⃣ DELETE /users/:id — Eliminar usuario permanentemente
+
+> ⚠️ Irreversible. Úsalo con una cuenta de prueba desechable.
+
+```
+Método: DELETE
+URL:    http://localhost:3000/api/v1/users/<UUID_del_usuario_a_eliminar>
+Header: Authorization: Bearer <token_del_admin>
+```
+
+**Sin body.** Respuesta esperada (200):
+```json
+{
+  "statusCode": 200,
+  "intOpCode": 0,
+  "data": [{ "message": "Usuario 'María García' eliminado permanentemente." }]
+}
+```
+
+**Errores a validar:**
+- Intentar eliminar el propio UUID del admin → 403 "No puedes eliminar tu propia cuenta."
+- UUID que no existe → 404 Not Found
+- Token sin permiso `users_delete` → 403 Forbidden
+
+---
+
+## 📋 Resumen de permisos requeridos
+
+| Endpoint | Permiso |
+|---|---|
+| POST /auth/login | Ninguno (público) |
+| POST /auth/register | Ninguno (público) |
+| GET /users/me | Solo JWT válido |
+| PATCH /users/me | Solo JWT válido |
+| PATCH /users/me/password | Solo JWT válido |
+| DELETE /users/me | Solo JWT válido |
+| GET /users | `users_view` |
+| POST /users/add | `users_add` |
+| PATCH /users/:id | `users_edit` |
+| PUT /users/:id/permissions | `users_edit` |
+| DELETE /users/:id | `users_delete` |
+
+## 🔑 Nombres válidos para permisos
+
+```
+ticket_add    ticket_edit    ticket_delete    ticket_view
+groups_add    groups_edit    groups_delete
+users_add     users_edit     users_delete     users_view
+```
+
 
 ### 1️⃣ Registro de usuario (público)
 

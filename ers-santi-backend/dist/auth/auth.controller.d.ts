@@ -26,5 +26,6 @@ export declare class AuthController {
             email: any;
             fecha_creacion: any;
         };
+        permisos_asignados: any[];
     }>;
 }

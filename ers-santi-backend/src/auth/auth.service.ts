@@ -170,9 +170,29 @@ export class AuthService {
       );
     }
 
+    // 5. Asignar permisos básicos por defecto a todo usuario que se registra
+    //    Solo ticket_view para mantener el principio de mínimo privilegio.
+    //    Un administrador puede ampliar los permisos desde /users/:id/permissions
+    const DEFAULT_PERMISSIONS = ['ticket_view'];
+
+    const { data: defaultPermsData } = await admin
+      .from('permisos')
+      .select('id, nombre')
+      .in('nombre', DEFAULT_PERMISSIONS);
+
+    if (defaultPermsData && defaultPermsData.length > 0) {
+      const inserts = defaultPermsData.map((p) => ({
+        usuario_id: authData.user.id,
+        permiso_id: p.id,
+      }));
+      await admin.from('usuario_permisos').insert(inserts);
+    }
+
     return {
       message: 'Usuario registrado correctamente.',
       user: perfil,
+      permisos_asignados: defaultPermsData?.map((p) => p.nombre) ?? [],
     };
   }
 }
+
