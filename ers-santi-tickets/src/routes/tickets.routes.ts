@@ -89,6 +89,17 @@ export async function ticketsRoutes(fastify: FastifyInstance) {
     if (!canEdit) throw createError(403, 'No tienes permiso para editar tickets en este grupo.');
   }
 
+  /**
+   * Verifica que el usuario a asignar sea miembro del grupo.
+   * Se llama cuando asignado_id no es null — permite null para desasignar.
+   */
+  async function assertAssignedIsMember(grupoId: string, asignadoId: string): Promise<void> {
+    const esMiembro = await isGroupMember(fastify, grupoId, asignadoId);
+    if (!esMiembro) {
+      throw createError(400, 'El usuario a asignar no es miembro de este grupo. Solo se puede asignar un ticket a integrantes del grupo.');
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // 3. GET /tickets/grupo/:grupoId
   //    Admin/líder → todos los tickets del grupo
@@ -172,6 +183,11 @@ export async function ticketsRoutes(fastify: FastifyInstance) {
 
         const canAdd = await hasGroupPermission(fastify, body.grupo_id, userId, 'ticket_add');
         if (!canAdd) throw createError(403, 'No tienes permiso para crear tickets en este grupo.');
+      }
+
+      // Validar que el asignado (si se proporciona) sea miembro del grupo
+      if (body.asignado_id) {
+        await assertAssignedIsMember(body.grupo_id, body.asignado_id);
       }
 
       // Resolver estado y prioridad por nombre → UUID
@@ -367,6 +383,10 @@ export async function ticketsRoutes(fastify: FastifyInstance) {
         });
       }
       if (body.asignado_id !== undefined) {
+        // null = desasignar (permitido). UUID = validar que sea miembro del grupo
+        if (body.asignado_id !== null) {
+          await assertAssignedIsMember(ticket.grupo_id, body.asignado_id);
+        }
         updateData.asignado_id = body.asignado_id;
         historialEntries.push({
           accion: 'asignado',

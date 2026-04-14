@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { jwtVerify, createRemoteJWKSet, decodeProtectedHeader } from 'jose';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 // ── Extiende FastifyRequest para tener request.user tipado ───────────────────
@@ -23,21 +23,26 @@ declare module 'fastify' {
 
 async function jwtPlugin(fastify: FastifyInstance) {
   const supabaseUrl = process.env.SUPABASE_URL;
+  const jwtSecret   = process.env.SUPABASE_JWT_SECRET;
 
-  if (!supabaseUrl) {
-    throw new Error('❌ SUPABASE_URL no definida en .env');
-  }
+  if (!supabaseUrl) throw new Error('❌ SUPABASE_URL no definida en .env');
+  if (!jwtSecret)   throw new Error('❌ SUPABASE_JWT_SECRET no definida en .env');
 
-  // JWKS = la clave pública de Supabase para verificar tokens (ES256)
-  // Se descarga automáticamente y se cachea
+  // ── Para proyectos Supabase nuevos: ES256/RS256 vía JWKS ─────────────────
+  // Misma URL que usa el NestJS guard
   const JWKS = createRemoteJWKSet(
-    new URL(`${supabaseUrl}/auth/v1/jwks`),
+    new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`),
   );
 
+  // ── Para proyectos Supabase actuales/legacy: HS256 vía JWT secret ─────────
+  const HS256_SECRET = new TextEncoder().encode(jwtSecret);
+
   // ─────────────────────────────────────────────────────────────────────────
-  // authenticate: equivalente al JwtGuard de NestJS
-  // Se usa como preHandler en cada ruta protegida:
-  // { preHandler: [fastify.authenticate] }
+  // authenticate: detecta el algoritmo del token y verifica correctamente
+  //
+  // Supabase projects firmaban con HS256 (JWT secret).
+  // Proyectos nuevos (2024+) usan ES256 con JWKS.
+  // Este plugin maneja ambos — igual que el NestJS JwtGuard.
   // ─────────────────────────────────────────────────────────────────────────
   fastify.decorate(
     'authenticate',
@@ -55,9 +60,26 @@ async function jwtPlugin(fastify: FastifyInstance) {
       const token = authHeader.slice(7);
 
       try {
-        const { payload } = await jwtVerify(token, JWKS);
+        // Leer el header del token SIN verificar la firma, solo para saber el algoritmo
+        const header = decodeProtectedHeader(token);
+        const alg = header.alg;
+
+        let payload: any;
+
+        if (alg === 'HS256') {
+          // Supabase legacy/actual: verificar con el JWT secret (clave simétrica)
+          const result = await jwtVerify(token, HS256_SECRET, {
+            algorithms: ['HS256'],
+          });
+          payload = result.payload;
+        } else {
+          // Supabase nuevo: ES256 / RS256 via clave pública (JWKS)
+          const result = await jwtVerify(token, JWKS);
+          payload = result.payload;
+        }
+
         req.user = payload as any;
-      } catch (err: any) {
+      } catch {
         return reply.code(401).send({
           statusCode: 401,
           intOpCode: 1,
@@ -68,9 +90,7 @@ async function jwtPlugin(fastify: FastifyInstance) {
   );
 
   // ─────────────────────────────────────────────────────────────────────────
-  // hasPermission: consulta usuario_permisos en Supabase
-  // Equivalente al PermissionGuard de NestJS, pero como función helper
-  // Uso: const canAdd = await fastify.hasPermission(req.user.sub, 'ticket_add');
+  // hasPermission: consulta usuario_permisos (permisos GLOBALES del usuario)
   // ─────────────────────────────────────────────────────────────────────────
   fastify.decorate(
     'hasPermission',
@@ -88,5 +108,5 @@ async function jwtPlugin(fastify: FastifyInstance) {
 
 export default fp(jwtPlugin, {
   name: 'jwt-plugin',
-  dependencies: ['supabase-plugin'], // garantiza que supabase esté listo primero
+  dependencies: ['supabase-plugin'],
 });
