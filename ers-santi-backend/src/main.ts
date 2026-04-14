@@ -9,13 +9,10 @@ async function bootstrap() {
   // ── Prefijo global de API ────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
 
-  // ── CORS ─────────────────────────────────────────────────────────────────
-  // Ajusta el origin al dominio de tu frontend cuando lo conectes
-  app.enableCors({
-    origin: ['http://localhost:4200', 'http://localhost:3003'],
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Secret'],
-  });
+  // ── CORS REMOVIDO ────────────────────────────────────────────────────────
+  // El API Gateway ahora maneja todo el CORS con el frontend de Angular.
+  // Este microservicio no debe emitir headers de CORS origin.
+
 
   // ── Validación global de DTOs ─────────────────────────────────────────────
   // whitelist: rechaza campos no definidos en el DTO

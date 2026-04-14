@@ -19,12 +19,9 @@ export async function buildApp() {
     },
   });
 
-  // ── CORS ────────────────────────────────────────────────────────────────
-  await app.register(cors, {
-    origin: ['http://localhost:4200', 'http://localhost:3003'],
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Secret'],
-  });
+  // ── CORS REMOVIDO ───────────────────────────────────────────────────────
+  // El API Gateway maneja todo el CORS. Solo recibimos llamadas de proxy.
+
 
   // ── Plugins (orden importa: supabase antes que jwt) ─────────────────
   await app.register(responsePlugin);   // 1. Formato de respuesta estándar

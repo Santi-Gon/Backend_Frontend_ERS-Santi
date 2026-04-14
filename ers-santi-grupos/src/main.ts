@@ -9,12 +9,9 @@ async function bootstrap() {
   // ── Prefijo global de API ────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
 
-  // ── CORS ─────────────────────────────────────────────────────────────────
-  app.enableCors({
-    origin: ['http://localhost:4200', 'http://localhost:3003'],
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Secret'],
-  });
+  // ── CORS REMOVIDO ────────────────────────────────────────────────────────
+  // El API Gateway ahora maneja todo el CORS de manera centralizada.
+
 
   // ── Validación global de DTOs ─────────────────────────────────────────────
   app.useGlobalPipes(
