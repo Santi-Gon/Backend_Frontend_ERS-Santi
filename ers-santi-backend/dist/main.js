@@ -8,9 +8,9 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     app.setGlobalPrefix('api/v1');
     app.enableCors({
-        origin: ['http://localhost:4200', 'http://localhost:3000'],
+        origin: ['http://localhost:4200', 'http://localhost:3003'],
         methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Secret'],
     });
     app.useGlobalPipes(new common_1.ValidationPipe({
         whitelist: true,
@@ -18,9 +18,22 @@ async function bootstrap() {
         transform: true,
     }));
     app.useGlobalInterceptors(new response_interceptor_1.ResponseInterceptor());
+    app.use((req, res, next) => {
+        if (req.method === 'OPTIONS')
+            return next();
+        const secret = req.headers['x-internal-secret'];
+        if (!secret || secret !== process.env.INTERNAL_SECRET) {
+            return res.status(403).json({
+                statusCode: 403,
+                intOpCode: 1,
+                data: [{ message: 'Acceso no autorizado. Usa el API Gateway.' }],
+            });
+        }
+        next();
+    });
     const port = process.env.PORT ?? 3000;
     await app.listen(port);
-    console.log(...oo_oo(`1616791602_37_2_37_83_4`, `🚀 ERS-Santi Backend corriendo en: http://localhost:${port}/api/v1`));
+    console.log(...oo_oo(`2730918642_53_2_53_83_4`, `🚀 ERS-Santi Backend corriendo en: http://localhost:${port}/api/v1`));
 }
 bootstrap();
 ;

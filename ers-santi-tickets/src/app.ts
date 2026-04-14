@@ -21,20 +21,30 @@ export async function buildApp() {
 
   // ── CORS ────────────────────────────────────────────────────────────────
   await app.register(cors, {
-    origin: [
-      'http://localhost:4200', // Angular frontend
-      'http://localhost:3000', // Users microservice
-      'http://localhost:3001', // Groups microservice
-      'http://localhost:3002', // This microservice
-    ],
+    origin: ['http://localhost:4200', 'http://localhost:3003'],
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Secret'],
   });
 
-  // ── Plugins (orden importa: supabase antes que jwt) ─────────────────────
+  // ── Plugins (orden importa: supabase antes que jwt) ─────────────────
   await app.register(responsePlugin);   // 1. Formato de respuesta estándar
   await app.register(supabasePlugin);   // 2. Cliente Supabase
   await app.register(jwtPlugin);        // 3. JWT + hasPermission (depende de supabase)
+
+  // ── Seguridad: solo el API Gateway puede hablar con este servicio ──────────
+  // Se ejecuta antes de cualquier handler (incluye rutas de tickets y catalogos).
+  // El health check (/api/v1/health) queda igualmente restringido al gateway.
+  app.addHook('onRequest', async (req, reply) => {
+    if (req.method === 'OPTIONS') return; // preflight CORS pasa sin verificar
+    const secret = req.headers['x-internal-secret'];
+    if (!secret || secret !== process.env.INTERNAL_SECRET) {
+      return reply.code(403).send({
+        statusCode: 403,
+        intOpCode: 1,
+        data: [{ message: 'Acceso no autorizado. Usa el API Gateway.' }],
+      });
+    }
+  });
 
   // ── Rutas ─────────────────────────────────────────────────────────────
   await app.register(catalogosRoutes, { prefix: '/api/v1' });
