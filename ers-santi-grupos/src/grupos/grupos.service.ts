@@ -15,9 +15,67 @@ import { UpdateLiderDto } from './dto/update-lider.dto';
 export class GruposService {
   constructor(private supabaseService: SupabaseService) {}
 
+  /**
+   * Permisos contextuales (tabla `grupo_usuario_permisos`) que recibe
+   * todo miembro al unirse al grupo (incluido el creador al crear el grupo).
+   * Deben existir filas con estos `nombre` en la tabla `permisos`.
+   * Sin `ticket_delete` por defecto (mínimo privilegio).
+   */
+  private static readonly DEFAULT_GROUP_MEMBER_PERMISSION_NAMES = [
+    'ticket_view',
+    'ticket_add',
+    'ticket_edit',
+  ] as const;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // HELPERS PRIVADOS
   // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Inserta la plantilla de permisos en el grupo para el usuario.
+   * Lanza InternalServerErrorException si falla o faltan permisos en catálogo.
+   */
+  private async applyDefaultGroupMemberPermissions(
+    grupoId: string,
+    usuarioId: string,
+  ): Promise<void> {
+    const admin = this.supabaseService.getAdminClient();
+    const names = [...GruposService.DEFAULT_GROUP_MEMBER_PERMISSION_NAMES];
+
+    const { data: permRows, error: permErr } = await admin
+      .from('permisos')
+      .select('id')
+      .in('nombre', names);
+
+    if (permErr) {
+      throw new InternalServerErrorException(
+        `Error al cargar permisos por defecto del grupo: ${permErr.message}`,
+      );
+    }
+
+    const ids = (permRows ?? []).map((p: { id: string }) => p.id);
+    if (ids.length < names.length) {
+      throw new InternalServerErrorException(
+        `Faltan permisos en el catálogo (se esperaban: ${names.join(', ')}).`,
+      );
+    }
+
+    const rows = ids.map((permiso_id) => ({
+      grupo_id: grupoId,
+      usuario_id: usuarioId,
+      permiso_id,
+    }));
+
+    const { error: insErr } = await admin
+      .from('grupo_usuario_permisos')
+      .insert(rows);
+
+    if (insErr) {
+      throw new InternalServerErrorException(
+        `Error al asignar permisos por defecto en el grupo: ${insErr.message}`,
+      );
+    }
+  }
 
   /** Verifica si el usuario tiene un permiso global en la tabla usuario_permisos */
   private async hasPermission(userId: string, permission: string): Promise<boolean> {
@@ -236,6 +294,14 @@ export class GruposService {
       );
     }
 
+    try {
+      await this.applyDefaultGroupMemberPermissions(grupo.id, userId);
+    } catch (e) {
+      await admin.from('grupo_usuarios').delete().eq('grupo_id', grupo.id).eq('usuario_id', userId);
+      await admin.from('grupos').delete().eq('id', grupo.id);
+      throw e;
+    }
+
     // Obtener nombre del creador para la respuesta
     const { data: creador } = await admin
       .from('usuarios')
@@ -420,6 +486,17 @@ export class GruposService {
       throw new InternalServerErrorException(
         `Error al agregar el miembro: ${error.message}`,
       );
+    }
+
+    try {
+      await this.applyDefaultGroupMemberPermissions(grupoId, targetUser.id);
+    } catch (e) {
+      await admin
+        .from('grupo_usuarios')
+        .delete()
+        .eq('grupo_id', grupoId)
+        .eq('usuario_id', targetUser.id);
+      throw e;
     }
 
     return {
