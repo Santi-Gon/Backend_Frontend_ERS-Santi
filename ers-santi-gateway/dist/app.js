@@ -8,6 +8,8 @@ const fastify_1 = __importDefault(require("fastify"));
 const cors_1 = __importDefault(require("@fastify/cors"));
 const rate_limit_plugin_1 = __importDefault(require("./plugins/rate-limit.plugin"));
 const proxy_plugin_1 = __importDefault(require("./plugins/proxy.plugin"));
+const supabase_plugin_1 = __importDefault(require("./plugins/supabase.plugin"));
+const request_logs_plugin_1 = __importDefault(require("./plugins/request-logs.plugin"));
 async function buildApp() {
     const app = (0, fastify_1.default)({
         logger: {
@@ -27,6 +29,8 @@ async function buildApp() {
     });
     // ── Rate Limiting (Seguridad: DDOS / Abuso) ─────────────────────────────
     await app.register(rate_limit_plugin_1.default);
+    await app.register(supabase_plugin_1.default);
+    await app.register(request_logs_plugin_1.default);
     // ── Proxy transparente hacia los microservicios ──────────────────────────
     await app.register(proxy_plugin_1.default);
     // ── Health Check propio del Gateway ─────────────────────────────────────
