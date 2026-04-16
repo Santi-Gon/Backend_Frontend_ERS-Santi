@@ -133,8 +133,9 @@ export async function ticketsRoutes(fastify: FastifyInstance) {
         const canView = await hasGroupPermission(fastify, grupoId, userId, 'ticket_view');
         if (!canView) throw createError(403, 'No tienes permiso para ver tickets en este grupo.');
 
-        // Solo ve los suyos
-        query = query.or(`autor_id.eq.${userId},asignado_id.eq.${userId}`) as any;
+        // Solo ve los suyos (A PETICION DEL USUARIO SE COMENTA PARA VER TODOS LOS TICKETS EN EL KANBAN)
+        // Ya que el Frontend está blindado contra ediciones no autorizadas.
+        // query = query.or(`autor_id.eq.${userId},asignado_id.eq.${userId}`) as any;
       }
 
       const { data, error } = await query;
