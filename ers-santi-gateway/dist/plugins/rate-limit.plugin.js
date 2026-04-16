@@ -19,8 +19,8 @@ async function rateLimitPlugin(fastify) {
                 statusCode: 429,
                 intOpCode: 1,
                 data: [{
-                        message: 'Demasiadas peticiones. Por favor, inténtelo de nuevo en un minuto.'
-                    }]
+                    message: 'Demasiadas peticiones. Por favor, inténtelo de nuevo en un minuto.'
+                }]
             };
         },
     });
