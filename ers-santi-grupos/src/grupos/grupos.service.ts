@@ -10,6 +10,7 @@ import { CreateGrupoDto } from './dto/create-grupo.dto';
 import { UpdateGrupoDto } from './dto/update-grupo.dto';
 import { AddMemberDto } from './dto/add-member.dto';
 import { UpdateLiderDto } from './dto/update-lider.dto';
+import { UpdateGroupMemberPermissionsDto } from './dto/update-group-member-permissions.dto';
 
 @Injectable()
 export class GruposService {
@@ -101,6 +102,18 @@ export class GruposService {
     return !!data;
   }
 
+  /** Verifica si el usuario es el creador del grupo */
+  private async isGroupCreator(grupoId: string, userId: string): Promise<boolean> {
+    const admin = this.supabaseService.getAdminClient();
+    const { data } = await admin
+      .from('grupos')
+      .select('id')
+      .eq('id', grupoId)
+      .eq('creador_id', userId)
+      .maybeSingle();
+    return !!data;
+  }
+
   /** Verifica si el usuario es miembro del grupo */
   private async isGroupMember(grupoId: string, userId: string): Promise<boolean> {
     const admin = this.supabaseService.getAdminClient();
@@ -128,6 +141,29 @@ export class GruposService {
         'No tienes permiso para realizar esta acción. Solo el líder del grupo o un administrador pueden hacerlo.',
       );
     }
+  }
+
+  /**
+   * Creador, líder o admin global (users_delete) pueden gestionar permisos
+   * internos de miembros.
+   */
+  private async assertCanManageGroupPermissions(
+    grupoId: string,
+    userId: string,
+  ): Promise<{ isCreator: boolean; isLeader: boolean; isAdmin: boolean }> {
+    const [isCreator, isLeader, isAdmin] = await Promise.all([
+      this.isGroupCreator(grupoId, userId),
+      this.isGroupLeader(grupoId, userId),
+      this.hasPermission(userId, 'users_delete'),
+    ]);
+
+    if (!isCreator && !isLeader && !isAdmin) {
+      throw new ForbiddenException(
+        'No tienes permiso para gestionar permisos internos de este grupo.',
+      );
+    }
+
+    return { isCreator, isLeader, isAdmin };
   }
 
   /**
@@ -621,6 +657,205 @@ export class GruposService {
         id: updated.id,
         nombre: updated.nombre,
         lider_id: updated.lider_id,
+      },
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 9. GET /grupos/:id/permisos-miembros
+  //    Solo creador, líder o admin global (users_delete).
+  // ─────────────────────────────────────────────────────────────────────────────
+  async getGroupMemberPermissions(userId: string, grupoId: string) {
+    const admin = this.supabaseService.getAdminClient();
+
+    const { data: grupo } = await admin
+      .from('grupos')
+      .select('id, nombre')
+      .eq('id', grupoId)
+      .maybeSingle();
+
+    if (!grupo) throw new NotFoundException('Grupo no encontrado.');
+
+    await this.assertCanManageGroupPermissions(grupoId, userId);
+
+    const { data: membersData, error: membersError } = await admin
+      .from('grupo_usuarios')
+      .select('usuario_id, usuarios(id, nombre_completo, email)')
+      .eq('grupo_id', grupoId);
+
+    if (membersError) {
+      throw new InternalServerErrorException(
+        `Error al obtener miembros del grupo: ${membersError.message}`,
+      );
+    }
+
+    const targetPermissionNames = [
+      'ticket_view',
+      'ticket_add',
+      'ticket_edit',
+      'ticket_delete',
+    ];
+
+    const { data: availablePermissions, error: availablePermissionsError } = await admin
+      .from('permisos')
+      .select('id, nombre, descripcion')
+      .in('nombre', targetPermissionNames)
+      .order('nombre', { ascending: true });
+
+    if (availablePermissionsError) {
+      throw new InternalServerErrorException(
+        `Error al obtener catálogo de permisos: ${availablePermissionsError.message}`,
+      );
+    }
+
+    const { data: assignedRows, error: assignedError } = await admin
+      .from('grupo_usuario_permisos')
+      .select('usuario_id, permisos!inner(nombre)')
+      .eq('grupo_id', grupoId);
+
+    if (assignedError) {
+      throw new InternalServerErrorException(
+        `Error al obtener permisos del grupo: ${assignedError.message}`,
+      );
+    }
+
+    const permissionsByUserId: Record<string, string[]> = {};
+    for (const row of assignedRows ?? []) {
+      const uid = row.usuario_id as string;
+      const permissionName = (row.permisos as any)?.nombre as string | undefined;
+      if (!permissionName) continue;
+      if (!permissionsByUserId[uid]) permissionsByUserId[uid] = [];
+      permissionsByUserId[uid].push(permissionName);
+    }
+
+    const members = (membersData ?? []).map((m: any) => {
+      const user = m.usuarios as any;
+      return {
+        id: m.usuario_id,
+        nombre_completo: user?.nombre_completo ?? 'Sin nombre',
+        email: user?.email ?? null,
+        permission_names: permissionsByUserId[m.usuario_id] ?? [],
+      };
+    });
+
+    return {
+      grupo: {
+        id: grupo.id,
+        nombre: grupo.nombre,
+      },
+      available_permissions: availablePermissions ?? [],
+      members,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 10. PATCH /grupos/:id/miembros/:uid/permisos
+  //     Creador, líder o admin global pueden editar.
+  //     Restricción: si quien edita es el creador, no puede editarse a sí mismo.
+  // ─────────────────────────────────────────────────────────────────────────────
+  async updateGroupMemberPermissions(
+    userId: string,
+    grupoId: string,
+    targetUserId: string,
+    dto: UpdateGroupMemberPermissionsDto,
+  ) {
+    const admin = this.supabaseService.getAdminClient();
+
+    const { data: grupo } = await admin
+      .from('grupos')
+      .select('id, nombre')
+      .eq('id', grupoId)
+      .maybeSingle();
+    if (!grupo) throw new NotFoundException('Grupo no encontrado.');
+
+    const access = await this.assertCanManageGroupPermissions(grupoId, userId);
+    if (access.isCreator && userId === targetUserId) {
+      throw new ForbiddenException(
+        'El creador del grupo no puede editar sus propios permisos internos.',
+      );
+    }
+
+    const isTargetMember = await this.isGroupMember(grupoId, targetUserId);
+    if (!isTargetMember) {
+      throw new BadRequestException('El usuario objetivo no pertenece a este grupo.');
+    }
+
+    const requestedNames = [...new Set(dto.permission_names ?? [])];
+    const allowedPermissionNames = [
+      'ticket_view',
+      'ticket_add',
+      'ticket_edit',
+      'ticket_delete',
+    ];
+
+    const invalidNames = requestedNames.filter(
+      (name) => !allowedPermissionNames.includes(name),
+    );
+    if (invalidNames.length > 0) {
+      throw new BadRequestException(
+        `Permisos no permitidos para contexto de grupo: ${invalidNames.join(', ')}`,
+      );
+    }
+
+    const { data: permRows, error: permError } = await admin
+      .from('permisos')
+      .select('id, nombre')
+      .in('nombre', requestedNames);
+
+    if (permError) {
+      throw new InternalServerErrorException(
+        `Error al validar permisos solicitados: ${permError.message}`,
+      );
+    }
+
+    if (requestedNames.length > 0 && (permRows ?? []).length !== requestedNames.length) {
+      throw new BadRequestException(
+        'Uno o más permisos solicitados no existen en el catálogo.',
+      );
+    }
+
+    const { error: clearError } = await admin
+      .from('grupo_usuario_permisos')
+      .delete()
+      .eq('grupo_id', grupoId)
+      .eq('usuario_id', targetUserId);
+
+    if (clearError) {
+      throw new InternalServerErrorException(
+        `Error al limpiar permisos actuales: ${clearError.message}`,
+      );
+    }
+
+    if ((permRows ?? []).length > 0) {
+      const insertRows = (permRows ?? []).map((p: any) => ({
+        grupo_id: grupoId,
+        usuario_id: targetUserId,
+        permiso_id: p.id,
+      }));
+
+      const { error: insertError } = await admin
+        .from('grupo_usuario_permisos')
+        .insert(insertRows);
+
+      if (insertError) {
+        throw new InternalServerErrorException(
+          `Error al guardar permisos del miembro: ${insertError.message}`,
+        );
+      }
+    }
+
+    const { data: targetUser } = await admin
+      .from('usuarios')
+      .select('id, nombre_completo')
+      .eq('id', targetUserId)
+      .maybeSingle();
+
+    return {
+      message: `Permisos internos actualizados para "${targetUser?.nombre_completo ?? targetUserId}" en el grupo "${grupo.nombre}".`,
+      member: {
+        id: targetUserId,
+        nombre_completo: targetUser?.nombre_completo ?? null,
+        permission_names: requestedNames,
       },
     };
   }

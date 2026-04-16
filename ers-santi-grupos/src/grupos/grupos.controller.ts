@@ -19,6 +19,7 @@ import { CreateGrupoDto } from './dto/create-grupo.dto';
 import { UpdateGrupoDto } from './dto/update-grupo.dto';
 import { AddMemberDto } from './dto/add-member.dto';
 import { UpdateLiderDto } from './dto/update-lider.dto';
+import { UpdateGroupMemberPermissionsDto } from './dto/update-group-member-permissions.dto';
 
 @Controller('grupos')
 @UseGuards(JwtGuard)
@@ -104,5 +105,24 @@ export class GruposController {
     @Param('uid') uid: string,
   ) {
     return this.gruposService.removeMember(req.user.sub, id, uid);
+  }
+
+  // ── GET /grupos/:id/permisos-miembros ──────────────────────────────────────
+  // Solo creador, líder o admin global pueden gestionar permisos internos.
+  @Get(':id/permisos-miembros')
+  getGroupMemberPermissions(@Req() req: any, @Param('id') id: string) {
+    return this.gruposService.getGroupMemberPermissions(req.user.sub, id);
+  }
+
+  // ── PUT /grupos/:id/miembros/:uid/permisos ─────────────────────────────────
+  // Solo creador, líder o admin global pueden editar permisos internos.
+  @Patch(':id/miembros/:uid/permisos')
+  updateGroupMemberPermissions(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('uid') uid: string,
+    @Body() dto: UpdateGroupMemberPermissionsDto,
+  ) {
+    return this.gruposService.updateGroupMemberPermissions(req.user.sub, id, uid, dto);
   }
 }
