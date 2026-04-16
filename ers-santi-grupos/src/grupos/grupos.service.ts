@@ -615,8 +615,13 @@ export class GruposService {
 
     if (!grupo) throw new NotFoundException('Grupo no encontrado.');
 
-    // Solo líder o admin puede cambiar el líder
-    await this.assertLeaderOrAdmin(grupoId, userId);
+    // Solo admin global puede cambiar el líder
+    const isGlobalAdmin = await this.hasPermission(userId, 'users_delete');
+    if (!isGlobalAdmin) {
+      throw new ForbiddenException(
+        'Solo un administrador global puede cambiar el líder del grupo.',
+      );
+    }
 
     // El nuevo líder ya es el líder
     if (grupo.lider_id === dto.usuario_id) {

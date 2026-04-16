@@ -46,7 +46,7 @@ export class GruposController {
 
   // ── PATCH /grupos/:id/lider ───────────────────────────────────────────────
   // IMPORTANTE: Declarado ANTES de PATCH /:id para evitar colisiones de rutas.
-  // Solo líder del grupo o admin (groups_edit) pueden cambiar el líder.
+  // Solo admin global (users_delete) puede cambiar el líder.
   @Patch(':id/lider')
   updateLider(
     @Req() req: any,
